@@ -27,14 +27,15 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
+import { useAuthStore } from '../stores/auth'
+import { nextTick } from 'vue'
+
+router.beforeEach(async (to, from, next) => {
   // EXTENSIVE ROUTER DEBUGGING:
   if (typeof window !== "undefined") {
     console.debug("[Router Debug] --- beforeEach ----")
     console.debug("[Router Debug] from:", from.fullPath, "to:", to.fullPath, "meta:", to.meta)
-    // Print router instance structure minimally
     try {
-      // Print out $router options if present
       if (router && typeof router.getRoutes === "function") {
         console.debug("[Router Debug] router.getRoutes:", router.getRoutes().map(r => ({ path: r.path, name: r.name })));
       }
@@ -42,39 +43,50 @@ router.beforeEach((to, from, next) => {
     try {
       console.debug("[Router Debug] localStorage.supabase.auth.token (raw):", localStorage.getItem('supabase.auth.token'));
     } catch { }
-    // Print all localStorage keys relevant to Supabase
     try {
       Object.keys(localStorage)
         .filter(k => k.toLowerCase().includes("supabase"))
         .forEach(k => console.debug(`[Router Debug] [localStorage] ${k}:`, localStorage.getItem(k)));
     } catch { }
   }
+
+  // Patch: Ensure latest Pinia user state is considered for ALL auth-protected routes, synchronize localStorage and Pinia if needed.
+  // Solution: We check both Pinia and localStorage to maximize reliability after login.
   if (to.meta.requiresAuth) {
-    let userObj = null;
+    let piniaUser = null;
+    try {
+      piniaUser = useAuthStore().user;
+    } catch {}
+    let sessionUser = null;
     let tokenRaw = null;
     try {
       tokenRaw = localStorage.getItem('supabase.auth.token');
-      userObj = tokenRaw ? JSON.parse(tokenRaw) : null;
-    } catch {
-      if (typeof window !== "undefined") console.debug("[Router Debug] JSON.parse failed:", tokenRaw);
-      userObj = null;
+      const userObj = tokenRaw ? JSON.parse(tokenRaw) : null;
+      sessionUser = userObj?.currentSession?.user || null;
+    } catch (e) {
+      if (typeof window !== "undefined") console.debug("[Router Debug] JSON.parse failed:", tokenRaw, e);
     }
-    // Print parsed session token for router debug
     if (typeof window !== "undefined") {
-      console.debug("[Router Debug] Parsed userObj:", userObj);
+      console.debug("[Router Debug] [beforeEach] Pinia user:", piniaUser, "Session user from LS:", sessionUser);
     }
-    const currentUser = userObj?.currentSession?.user;
-    if (!currentUser) {
-      if (typeof window !== "undefined") console.debug("[Router Debug] No valid user found, redirecting to /auth")
+    // Pinia sometimes lags after login, so wait one tick if user is missing just after login from /auth.
+    if (!piniaUser && sessionUser && from.path === '/auth') {
+      if (typeof window !== "undefined") console.debug("[Router Fix] Pinia user not yet hydrated after login, awaiting nextTick...");
+      await nextTick();
+      piniaUser = useAuthStore().user;
+      if (typeof window !== "undefined") console.debug("[Router Fix] Pinia user after nextTick:", piniaUser);
+    }
+    if (!piniaUser && !sessionUser) {
+      if (typeof window !== "undefined") console.debug("[Router Debug] No valid user in Pinia or session, redirecting to /auth")
       next('/auth')
       return
     } else {
-      if (typeof window !== "undefined") console.debug("[Router Debug] Authenticated user found:", currentUser)
+      if (typeof window !== "undefined") console.debug("[Router Debug] Authenticated user found (either Pinia or session):", piniaUser || sessionUser)
     }
   }
-  // Log that navigation is allowed to continue
   if (typeof window !== "undefined") console.debug("[Router Debug] Navigation allowed for", to.fullPath)
   next()
 })
+
 
 export default router
