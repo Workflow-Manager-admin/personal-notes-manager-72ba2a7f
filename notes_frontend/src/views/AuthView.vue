@@ -26,8 +26,19 @@ async function submit() {
   }
 
   if (result) {
-    // Small visual delay for feedback before routing (optional)
-    await new Promise(res => setTimeout(res, 250))
+    // Wait for localStorage's supabase auth token to contain user before routing - router guard expects it.
+    for (let i = 0; i < 10; i++) {
+      const token = localStorage.getItem('supabase.auth.token')
+      if (token) {
+        try {
+          const parsed = JSON.parse(token)
+          if (parsed?.currentSession?.user) {
+            break
+          }
+        } catch {}
+      }
+      await new Promise(res => setTimeout(res, 70))
+    }
     router.push('/')
   }
   // else: error will be shown below via authStore.authError
