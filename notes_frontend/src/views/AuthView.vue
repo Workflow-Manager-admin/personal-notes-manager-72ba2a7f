@@ -9,14 +9,28 @@ const email = ref('')
 const password = ref('')
 const isLogin = ref(true)
 
+/**
+ * Handles form submission for login/register.
+ * Performs loading state via Pinia, and on success navigates to home,
+ * on error keeps user on form and displays feedback.
+ */
 async function submit() {
+  // Prevent double submit if already loading
+  if (authStore.loading) return
+
+  let result = false
   if (isLogin.value) {
-    const result = await authStore.signIn(email.value, password.value)
-    if (result) router.push('/')
+    result = await authStore.signIn(email.value, password.value)
   } else {
-    const result = await authStore.signUp(email.value, password.value)
-    if (result) router.push('/')
+    result = await authStore.signUp(email.value, password.value)
   }
+
+  if (result) {
+    // Small visual delay for feedback before routing (optional)
+    await new Promise(res => setTimeout(res, 250))
+    router.push('/')
+  }
+  // else: error will be shown below via authStore.authError
 }
 </script>
 
@@ -35,7 +49,9 @@ async function submit() {
         type="submit"
         :disabled="authStore.loading"
         @click.prevent="submit"
+        aria-busy="true"
       >
+        <span v-if="authStore.loading" style="margin-right: 7px;">⏳</span>
         {{ isLogin ? 'Sign In' : 'Register' }}
       </button>
       <div class="switch">
@@ -47,6 +63,9 @@ async function submit() {
         </a>
       </div>
       <div v-if="authStore.authError" class="error">{{ authStore.authError }}</div>
+      <div v-if="!authStore.authError && !authStore.loading && authStore.user && isLogin" class="success" style="color:#42b983;text-align:center;">
+        Login successful! Redirecting...
+      </div>
     </form>
   </div>
 </template>

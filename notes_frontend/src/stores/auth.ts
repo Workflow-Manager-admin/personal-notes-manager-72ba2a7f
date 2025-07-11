@@ -32,16 +32,31 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // PUBLIC_INTERFACE
+  /**
+   * Attempts to sign in and updates user and error state.
+   * Returns true on success, false on error.
+   */
   async function signIn(email: string, password: string) {
     loading.value = true
     authError.value = null
     const { error, data } = await supabase.auth.signInWithPassword({ email, password })
+    // Defensive: also fetch session's user, as Supabase might not update directly
+    if (!error) {
+      user.value = data.user
+      if (!user.value) {
+        const { data: udata } = await supabase.auth.getUser()
+        user.value = udata.user || null
+      }
+    }
     loading.value = false
     if (error) {
       authError.value = error.message
       return false
     }
-    user.value = data.user
+    if (!user.value) {
+      authError.value = 'Login failed: No user returned from backend.'
+      return false
+    }
     return true
   }
 
