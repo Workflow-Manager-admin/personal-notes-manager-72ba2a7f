@@ -26,7 +26,16 @@ async function submit() {
       <h2 class="primary">{{ isLogin ? 'Sign In' : 'Register' }}</h2>
       <input v-model="email" type="email" placeholder="Email" required autocomplete="username" />
       <input v-model="password" type="password" placeholder="Password" required autocomplete="current-password" />
-      <button class="primary" type="submit" :disabled="authStore.loading">
+      <!--
+        PUBLIC_INTERFACE
+        The sign-in/register button triggers authentication. Ensuring click and submit behaviors are handled.
+      -->
+      <button
+        class="primary"
+        type="submit"
+        :disabled="authStore.loading"
+        @click.prevent="submit"
+      >
         {{ isLogin ? 'Sign In' : 'Register' }}
       </button>
       <div class="switch">
