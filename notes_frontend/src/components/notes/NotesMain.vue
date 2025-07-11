@@ -9,11 +9,16 @@ const editingNote = ref<Note | null>(null)
 const editorTitle = ref('')
 const editorContent = ref('')
 
-// Open for create
+/**
+ * PUBLIC_INTERFACE
+ * Open the editor in "create new note" mode.
+ * Ensures the editor is displayed with input focus (empty fields).
+ */
 function startNew() {
   editingNote.value = null
   editorTitle.value = ''
   editorContent.value = ''
+  notesStore.error = null // Clear previous error message on starting a new note
 }
 
 /**
@@ -75,6 +80,9 @@ async function removeNote(id: string) {
       <form @submit.prevent="saveNote">
         <input v-model="editorTitle" type="text" required placeholder="Note Title" />
         <textarea v-model="editorContent" rows="6" placeholder="Your note..."></textarea>
+        <div v-if="notesStore.error" class="note-error" style="color: #b82e2e; margin-bottom: 12px;">
+          {{ notesStore.error }}
+        </div>
         <div class="actions">
           <button class="save" type="submit">Save</button>
           <button class="cancel" type="button" @click="startNew">Cancel</button>
