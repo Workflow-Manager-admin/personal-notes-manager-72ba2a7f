@@ -25,39 +25,84 @@ async function submit() {
     result = await authStore.signUp(email.value, password.value)
   }
 
-  // Extra debugging logs in browser console for session auth
+  // Deep debugging on user/session/storage state
   if (typeof window !== "undefined") {
-    console.debug("[Auth Debug] After submit:", { result, user: authStore.user, isLogin: isLogin.value });
-    console.debug("[Auth Debug] localStorage.supabase.auth.token:", localStorage.getItem('supabase.auth.token'));
+    const storageRaw = localStorage.getItem('supabase.auth.token');
+    let parsedUser = null;
+    try {
+      if (storageRaw) {
+        parsedUser = JSON.parse(storageRaw)?.currentSession?.user || null;
+      }
+    } catch (e) {
+      console.debug("[Auth Debug] Parsing localStorage.supabase.auth.token failed:", e);
+    }
+    console.debug("[Auth Debug] After submit:", {
+      result,
+      authStoreUser: authStore.user,
+      isLogin: isLogin.value,
+      localStorageRaw: storageRaw,
+      parsedUser
+    });
+    console.debug("[Auth Debug] typeof router:", typeof router, router);
+    // Print all localStorage
+    console.debug("[Auth Debug] Complete localStorage dump:", { ...localStorage });
+    // Print router full state if possible
+    if (router && typeof router.getRoutes === "function") {
+      try {
+        console.debug("[Auth Debug] router.getRoutes:", router.getRoutes().map(r => ({ path: r.path, name: r.name })));
+      } catch { /* ignore */ }
+    }
   }
 
   if (result) {
-    // Wait for both Pinia's store and localStorage's supabase auth token to have the user
+    // Wait for BOTH Pinia's store and localStorage's supabase auth token to show user, up to 1.2s
     let sessionOk = false
     for (let i = 0; i < 20; i++) {
       const token = localStorage.getItem('supabase.auth.token')
       const storeUserOk = !!authStore.user
       let localUserOk = false
+      let localSessionCopy = null
       if (token) {
         try {
           const parsed = JSON.parse(token)
+          localSessionCopy = parsed
           if (parsed?.currentSession?.user) {
             localUserOk = true
           }
-        } catch {}
+        } catch (e) {
+          if (typeof window !== "undefined") console.debug("[Auth Debug] JSON.parse failed in redirect wait loop", e)
+        }
       }
       sessionOk = storeUserOk && localUserOk
       if (typeof window !== "undefined") {
-        console.debug(`[Auth Debug] Wait login redirect loop ${i} – Pinia user`, storeUserOk, "Local user", localUserOk, authStore.user)
+        console.debug(`[Auth Debug] Wait login redirect loop ${i} – Pinia user`, storeUserOk, "Local user", localUserOk, "Pinia value", authStore.user, "LocalSessionCopy", localSessionCopy)
       }
       if (sessionOk) break
       await new Promise(res => setTimeout(res, 60))
     }
 
+    // Log router state pre-redirect
+    if (typeof window !== "undefined") {
+      try {
+        // Print current/target route meta
+        const matched = router.currentRoute?.value
+        console.debug("[Auth Debug] Before redirect, router.currentRoute:", matched);
+      } catch { }
+    }
+
     // Defensive delayed redirect for best compatibility
     setTimeout(() => {
+      // log before and after push/replace
+      if (typeof window !== "undefined") {
+        console.debug("[Auth Debug] setTimeout triggering router.replace('/')");
+      }
       router.replace("/")
-      if (typeof window !== "undefined") console.debug("[Auth Debug] Navigated to home.")
+        .then(() => {
+          if (typeof window !== "undefined") console.debug("[Auth Debug] router.replace('/') completed");
+        })
+        .catch(e => {
+          if (typeof window !== "undefined") console.error("[Auth Debug] router.replace('/') error", e);
+        })
     }, 40)
   }
   // else: error will be shown below via authStore.authError

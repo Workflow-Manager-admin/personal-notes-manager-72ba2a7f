@@ -28,17 +28,40 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
-  // Log route changes and localStorage for debugging
+  // EXTENSIVE ROUTER DEBUGGING:
   if (typeof window !== "undefined") {
-    console.debug("[Router Debug] Navigation from", from.fullPath, "to", to.fullPath)
-    console.debug("[Router Debug] localStorage.supabase.auth.token:", localStorage.getItem('supabase.auth.token'));
+    console.debug("[Router Debug] --- beforeEach ----")
+    console.debug("[Router Debug] from:", from.fullPath, "to:", to.fullPath, "meta:", to.meta)
+    // Print router instance structure minimally
+    try {
+      // Print out $router options if present
+      if (router && typeof router.getRoutes === "function") {
+        console.debug("[Router Debug] router.getRoutes:", router.getRoutes().map(r => ({ path: r.path, name: r.name })));
+      }
+    } catch { }
+    try {
+      console.debug("[Router Debug] localStorage.supabase.auth.token (raw):", localStorage.getItem('supabase.auth.token'));
+    } catch { }
+    // Print all localStorage keys relevant to Supabase
+    try {
+      Object.keys(localStorage)
+        .filter(k => k.toLowerCase().includes("supabase"))
+        .forEach(k => console.debug(`[Router Debug] [localStorage] ${k}:`, localStorage.getItem(k)));
+    } catch { }
   }
   if (to.meta.requiresAuth) {
     let userObj = null;
+    let tokenRaw = null;
     try {
-      userObj = JSON.parse(localStorage.getItem('supabase.auth.token') || 'null');
+      tokenRaw = localStorage.getItem('supabase.auth.token');
+      userObj = tokenRaw ? JSON.parse(tokenRaw) : null;
     } catch {
-      /* swallow */
+      if (typeof window !== "undefined") console.debug("[Router Debug] JSON.parse failed:", tokenRaw);
+      userObj = null;
+    }
+    // Print parsed session token for router debug
+    if (typeof window !== "undefined") {
+      console.debug("[Router Debug] Parsed userObj:", userObj);
     }
     const currentUser = userObj?.currentSession?.user;
     if (!currentUser) {
@@ -49,6 +72,8 @@ router.beforeEach((to, from, next) => {
       if (typeof window !== "undefined") console.debug("[Router Debug] Authenticated user found:", currentUser)
     }
   }
+  // Log that navigation is allowed to continue
+  if (typeof window !== "undefined") console.debug("[Router Debug] Navigation allowed for", to.fullPath)
   next()
 })
 
