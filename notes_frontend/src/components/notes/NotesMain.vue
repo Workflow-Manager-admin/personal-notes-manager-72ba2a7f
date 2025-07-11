@@ -8,6 +8,7 @@ const notesStore = useNotesStore()
 const editingNote = ref<Note | null>(null)
 const editorTitle = ref('')
 const editorContent = ref('')
+const editorVisible = ref(false)
 
 /**
  * PUBLIC_INTERFACE
@@ -19,6 +20,7 @@ function startNew() {
   editorTitle.value = ''
   editorContent.value = ''
   notesStore.error = null // Clear previous error message on starting a new note
+  editorVisible.value = true
 }
 
 /**
@@ -26,9 +28,10 @@ function startNew() {
  * Put note into edit mode.
  */
 function openEdit(note: Note) {
-  editingNote.value = note
+  editingNote.value = { ...note } // clone so we don't update original until save
   editorTitle.value = note.title
   editorContent.value = note.content
+  editorVisible.value = true
 }
 
 // Save/create note
@@ -39,10 +42,18 @@ async function saveNote() {
   } else {
     await notesStore.addNote(editorTitle.value, editorContent.value)
   }
+  // Close editor and reset
+  closeEditor()
+  await notesStore.fetchNotes()
+}
+
+// Explicitly close editor (and clear fields)
+function closeEditor() {
   editingNote.value = null
   editorTitle.value = ''
   editorContent.value = ''
-  await notesStore.fetchNotes()
+  notesStore.error = null
+  editorVisible.value = false
 }
 
 // Delete
@@ -65,6 +76,7 @@ async function removeNote(id: string) {
         :key="note.id"
         class="note-card"
         @click="openEdit(note)"
+        :data-testid="'note-card-' + note.id"
       >
         <h3>{{ note.title }}</h3>
         <div class="subtitle">{{ new Date(note.updated_at).toLocaleString() }}</div>
@@ -76,7 +88,10 @@ async function removeNote(id: string) {
       </div>
     </section>
 
-    <section v-if="editingNote !== null || editorTitle" class="editor">
+    <!--
+      Editor shows ONLY when explicitly opened for new or edit, not just because editorTitle has text
+    -->
+    <section v-if="editorVisible" class="editor">
       <form @submit.prevent="saveNote">
         <input v-model="editorTitle" type="text" required placeholder="Note Title" />
         <textarea v-model="editorContent" rows="6" placeholder="Your note..."></textarea>
@@ -85,7 +100,7 @@ async function removeNote(id: string) {
         </div>
         <div class="actions">
           <button class="save" type="submit">Save</button>
-          <button class="cancel" type="button" @click="startNew">Cancel</button>
+          <button class="cancel" type="button" @click="closeEditor">Cancel</button>
         </div>
       </form>
     </section>
