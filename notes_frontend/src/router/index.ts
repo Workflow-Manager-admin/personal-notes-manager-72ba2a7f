@@ -28,11 +28,25 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
+  // Log route changes and localStorage for debugging
+  if (typeof window !== "undefined") {
+    console.debug("[Router Debug] Navigation from", from.fullPath, "to", to.fullPath)
+    console.debug("[Router Debug] localStorage.supabase.auth.token:", localStorage.getItem('supabase.auth.token'));
+  }
   if (to.meta.requiresAuth) {
-    const user = JSON.parse(localStorage.getItem('supabase.auth.token') || 'null')?.currentSession?.user
-    if (!user) {
+    let userObj = null;
+    try {
+      userObj = JSON.parse(localStorage.getItem('supabase.auth.token') || 'null');
+    } catch {
+      /* swallow */
+    }
+    const currentUser = userObj?.currentSession?.user;
+    if (!currentUser) {
+      if (typeof window !== "undefined") console.debug("[Router Debug] No valid user found, redirecting to /auth")
       next('/auth')
       return
+    } else {
+      if (typeof window !== "undefined") console.debug("[Router Debug] Authenticated user found:", currentUser)
     }
   }
   next()

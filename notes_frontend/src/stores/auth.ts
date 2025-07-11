@@ -66,7 +66,11 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
   }
 
+  // Session propagation debugging: log auth state changes
   supabase.auth.onAuthStateChange((event, session) => {
+    if (typeof window !== "undefined") {
+      console.debug("[Auth Store] onAuthStateChange event: ", event, "Session:", session)
+    }
     user.value = session?.user || null
   })
 

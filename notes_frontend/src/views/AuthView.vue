@@ -25,21 +25,40 @@ async function submit() {
     result = await authStore.signUp(email.value, password.value)
   }
 
+  // Extra debugging logs in browser console for session auth
+  if (typeof window !== "undefined") {
+    console.debug("[Auth Debug] After submit:", { result, user: authStore.user, isLogin: isLogin.value });
+    console.debug("[Auth Debug] localStorage.supabase.auth.token:", localStorage.getItem('supabase.auth.token'));
+  }
+
   if (result) {
-    // Wait for localStorage's supabase auth token to contain user before routing - router guard expects it.
-    for (let i = 0; i < 10; i++) {
+    // Wait for both Pinia's store and localStorage's supabase auth token to have the user
+    let sessionOk = false
+    for (let i = 0; i < 20; i++) {
       const token = localStorage.getItem('supabase.auth.token')
+      const storeUserOk = !!authStore.user
+      let localUserOk = false
       if (token) {
         try {
           const parsed = JSON.parse(token)
           if (parsed?.currentSession?.user) {
-            break
+            localUserOk = true
           }
         } catch {}
       }
-      await new Promise(res => setTimeout(res, 70))
+      sessionOk = storeUserOk && localUserOk
+      if (typeof window !== "undefined") {
+        console.debug(`[Auth Debug] Wait login redirect loop ${i} – Pinia user`, storeUserOk, "Local user", localUserOk, authStore.user)
+      }
+      if (sessionOk) break
+      await new Promise(res => setTimeout(res, 60))
     }
-    router.push('/')
+
+    // Defensive delayed redirect for best compatibility
+    setTimeout(() => {
+      router.replace("/")
+      if (typeof window !== "undefined") console.debug("[Auth Debug] Navigated to home.")
+    }, 40)
   }
   // else: error will be shown below via authStore.authError
 }
