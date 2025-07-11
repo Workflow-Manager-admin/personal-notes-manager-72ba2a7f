@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, nextTick, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useRouter } from 'vue-router'
 
@@ -14,6 +14,7 @@ const isLogin = ref(true)
  * Performs loading state via Pinia, and on success navigates to home,
  * on error keeps user on form and displays feedback.
  */
+// Robust login redirect after sign in/sign up session propagation
 async function submit() {
   // Prevent double submit if already loading
   if (authStore.loading) return
@@ -54,56 +55,37 @@ async function submit() {
     }
   }
 
+  // PROBLEM: Double async session propagation between Pinia, supabase, and router guard can cause redirect to NOT happen!
+  // SOLUTION: Use a robust combination of nextTick, session watch, fallback setTimeout, AND forced router.replace -- guarantee redirect.
   if (result) {
-    // Wait for BOTH Pinia's store and localStorage's supabase auth token to show user, up to 1.2s
-    let sessionOk = false
-    for (let i = 0; i < 20; i++) {
-      const token = localStorage.getItem('supabase.auth.token')
-      const storeUserOk = !!authStore.user
-      let localUserOk = false
-      let localSessionCopy = null
-      if (token) {
-        try {
-          const parsed = JSON.parse(token)
-          localSessionCopy = parsed
-          if (parsed?.currentSession?.user) {
-            localUserOk = true
-          }
-        } catch (e) {
-          if (typeof window !== "undefined") console.debug("[Auth Debug] JSON.parse failed in redirect wait loop", e)
+    let sessionOk = false;
+    let manualTimeout: ReturnType<typeof setTimeout> | null = null;
+    let watcherStop: (() => void) | null = null;
+    // Method for max robustness: watch the authStore.user ref, and force router.replace on first population
+    await nextTick();
+    await new Promise(res => setTimeout(res, 64)); // let any session propagation happen
+    // Fallback forced redirect after 850ms (in case watch/pinia propagation fails)
+    manualTimeout = setTimeout(() => {
+      if (!sessionOk) {
+        if (typeof window !== "undefined") console.debug("[Auth Robust] Fallback setTimeout router.replace('/') after propagation window");
+        router.replace("/").catch(() => {});
+      }
+      if (watcherStop) watcherStop();
+    }, 850);
+
+    watcherStop = watch(
+      () => authStore.user,
+      (val) => {
+        if (val) {
+          sessionOk = true;
+          if (typeof window !== "undefined") console.debug("[Auth Robust] Session/user detected in Pinia after auth, forcing router.replace('/') now:", val);
+          router.replace("/").catch(() => {});
+          clearTimeout(manualTimeout);
+          if (watcherStop) watcherStop();
         }
-      }
-      sessionOk = storeUserOk && localUserOk
-      if (typeof window !== "undefined") {
-        console.debug(`[Auth Debug] Wait login redirect loop ${i} – Pinia user`, storeUserOk, "Local user", localUserOk, "Pinia value", authStore.user, "LocalSessionCopy", localSessionCopy)
-      }
-      if (sessionOk) break
-      await new Promise(res => setTimeout(res, 60))
-    }
-
-    // Log router state pre-redirect
-    if (typeof window !== "undefined") {
-      try {
-        // Print current/target route meta
-        const matched = router.currentRoute?.value
-        console.debug("[Auth Debug] Before redirect, router.currentRoute:", matched);
-      } catch { }
-    }
-
-    // Defensive delayed redirect for best compatibility
-    setTimeout(() => {
-      // log before and after push/replace
-      if (typeof window !== "undefined") {
-        console.debug("[Auth Debug] setTimeout triggering router.replace('/')");
-      }
-      router.replace("/")
-        .then(() => {
-          if (typeof window !== "undefined") console.debug("[Auth Debug] router.replace('/') completed");
-        })
-        .catch(e => {
-          if (typeof window !== "undefined") console.error("[Auth Debug] router.replace('/') error", e);
-        })
-    }, 40)
+      },
+      { immediate: true, flush: 'post' } // flush post-microtask for best timing with Pinia
+    );
   }
   // else: error will be shown below via authStore.authError
 }
